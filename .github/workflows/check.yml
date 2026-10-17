@@ -11,3 +11,4 @@ jobs:
         with:
           python-version: '3.12'
       - run: python scripts/check_source.py
+      - run: python -m unittest discover -s tests -p "test_*.py"

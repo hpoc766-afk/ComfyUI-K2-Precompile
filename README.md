@@ -1,109 +1,80 @@
 # ComfyUI-K2-Precompile
 
-Krea2 模型加载、可选逐元素预编译，以及沿用普通 LoRA 节点操作方式的低秩旁路热切换。
+用于 ComfyUI 的 Krea2 模型加载节点，提供可选的模型计算预编译和 LoRA 热切换。
 
-独立公开源码仓库：<https://github.com/hpoc766-afk/ComfyUI-K2-Precompile>。许可证：[GPL-3.0](LICENSE)。
+节点名称：**K2 模型加载器**，分类：`K2/模型加载`。输出依次为模型、文本编码器和 VAE，可连接普通 LoRA、文本编码及采样节点。
 
 ## 安装
 
-进入已有的 ComfyUI 目录，执行：
+在已有 ComfyUI 目录执行：
 
 ```bash
 git clone https://github.com/hpoc766-afk/ComfyUI-K2-Precompile.git custom_nodes/ComfyUI-K2-Precompile
 ```
 
-然后重启 ComfyUI，添加“**K2 模型加载器**”节点。更新使用：
+重启 ComfyUI 后使用。更新：
 
 ```bash
 git -C custom_nodes/ComfyUI-K2-Precompile pull --ff-only
 ```
 
-如果已有旧副本或目录联接，请确认只加载一份，避免同名节点重复注册。
+只保留一份安装，避免旧副本或目录联接造成同名节点重复注册。需要支持 Krea2、`PatcherInjection` 与 LoRA 旁路 API 的 ComfyUI，以及相互兼容的 PyTorch、comfy-kitchen 和 GPU 编译环境。本节点不下载权重，也不自动升级依赖。
 
-需要已有支持 Krea2 `SingleStreamDiT`、`PatcherInjection` 和 `comfy.weight_adapter` 旁路 API 的 ComfyUI。开启预编译还需要该环境的 `torch.compile / Inductor` 能在目标 GPU 上正常执行。ComfyUI、PyTorch 与 comfy-kitchen 应互相兼容；本节点不自动升级它们，也不下载模型。
+## 参数
 
-## 节点参数
-
-节点：`K2PrecompileLoader`，分类：`K2/模型加载`。
-界面输出依次为“模型／文本编码器／变分自编码器”，可接原有 LoRA、文本编码和采样节点。
-六个参数均提供中文名称与提示，内部参数标识保持不变，已有工作流无需重新接线。
-
-| 输入 | 作用 |
+| 参数 | 作用 |
 |---|---|
-| 主干模型 | 选择 Krea2 主干权重文件 |
-| 文本编码器 | 选择文本编码器，固定按 Krea2 类型加载 |
-| 变分自编码器 | 选择图像与潜空间转换所用的权重文件 |
-| 启用预编译 | 默认关闭；关闭时不编译、不补齐；LoRA 热插拔由独立开关控制 |
-| 预填充令牌数 | 开启编译时，主干联合序列的令牌总容量；默认 5120，0 表示不补齐 |
-| 启用 LoRA 热插拔 | 默认关闭；开启后验证 K2 权重名称与适配器维度，让下游 LoRA 加载节点使用低秩旁路热插拔 |
+| 主干模型 | 选择 Krea2 DiT 权重 |
+| 文本编码器 | 选择 Krea2 使用的文本编码器权重 |
+| 变分自编码器 | 选择图像与潜空间转换的 VAE 权重 |
+| 启用预编译 | 默认关闭；编译 DiT block 外围的逐元素调制与残差运算 |
+| 预填充令牌数 | 仅逐元素模式使用；文本与图像联合 token 总容量，0 表示不补齐 |
+| 启用 LoRA 热插拔 | 默认关闭；后续普通 LoRA 节点使用兼容的低秩旁路 |
+| 全部预编译（模型计算） | 默认关闭；分别严格编译 TE Transformer、DiT 前向及 VAE 编解码，优先于逐元素模式 |
 
-常用的 K2 工作流模型示例（权重不随本仓库分发）：
+全部预编译开启时，`启用预编译` 与 `预填充令牌数` 不再参与配置，模型使用实际输入形状。两个编译开关都关闭时沿用原生计算。
 
-- DiT：`Krea2-Turbo-int4-ConvRot-ComfyUI.safetensors`
-- 文本编码器：`qwen3-vl-4b-heretic_fp8_e4m3fn.safetensors`
-- VAE：`qwen_image_vae.safetensors`
+## 实现方式
 
-`prefill_tokens` 包含文本和图像 token，不是文本最大长度，也不是要添加的空位数量。
-例如原实验的 832×1216、98 个文本 token，总计为 4050；容量 5120 会补 1070 行。
-参考图也会占用容量；超过指定容量会明确报错，需增大容量或设为 0。
+**逐元素模式**使用 `torch.compile / Inductor` 分别编译加法、乘法，归一化、Attention、MLP 和权重读取仍沿用原生实现。指定 token 容量时，主干输入补齐到该容量，attention mask 隔离空位，RoPE 保留真实位置；最后一个 block 后截回有效长度，再执行原输出投影。
 
-只补齐 DiT 主干 block 的输入。有效 token 由 attention mask 隔离，保留原始 RoPE，
-最后一个 block 后裁回真实总长度，再执行原输出投影。临时张量随本次前向结束释放。
+**全部预编译模式**将 DiT 的完整前向、TE 的 Transformer 前向、VAE 的 `encode` 和 `decode` 注册为受模型管理器控制的编译入口。首次实际调用使用 `torch.compile(backend="inductor", fullgraph=True, dynamic=True)` 构建计划，后续调用复用兼容计划。模型卸载时恢复原方法；LoRA 或输入变化可能使已有 guards 不匹配而产生新计划。ConvRot 线性内核通过外部算子节点和 FakeTensor 形状规则接入，内部保留原生 CUDA 计算。此模式不启用 CUDA Graph。
 
-使用 `torch.compile / Inductor`，首次实际采样时编译；不在点击加载时进行虚拟推理。
-主干的调制参数、归一化、Attention、MLP 及其权重读取/LoRA 处理沿用原生实现，
-编译的是 block 外围的逐元素调制与残差计算，不是整个 DiT 的完整图编译。
-加法、乘法分别编译，保留每一步 BF16 输出的舍入边界，避免改变 INT4 输入。
-含零时间步参考图的特殊分支沿用原生 block；其 token 补齐和 mask 仍生效。
-不要求完整权重常驻显存，不启用 CUDA Graph，不编译文本编码器或 VAE。
+`fullgraph=True` 要求每个入口可完整追踪。不支持的操作或执行错误会标出组件并抛出异常，不会静默转成部分编译或 eager 执行。
 
-开启“LoRA 热插拔”后，照常将本节点连接到原来的 LoRA 加载节点，选择文件与强度即可。
-标准 `LoraLoader`、`LoraLoaderModelOnly`，以及调用它们的 rgthree LoRA 加载器均会接入。
-此开关可与“启用预编译”分别启用，不增加单独的 LoRA 加载节点。
+**LoRA 热插拔**接入普通 `LoraLoader`、`LoraLoaderModelOnly` 及调用标准加载 API 的节点。标准线性 LoRA 使用 `base(x) + scale · up(down(x))`，保留实际 rank，不展开稠密 AB，不将增量重新量化到底座。串联时按顺序注入、反序撤回，闲置因子移回 CPU。文本编码器沿用原 `strength_clip` 规则；LoKr、DoRA、mid/reshape 等不兼容形式继续原生挂载。
 
-只对本加载器标记的 K2 模型分流，先用原生映射解析 key，再核对实际层的输入/输出维度及 A/B rank。
-没有匹配 key、缺少 A/B 配对或标准线性 LoRA 形状错误时会报错。
-支持的标准线性 LoRA 使用原生低秩旁路 `base(x) + strength · alpha/rank · up(down(x))`，
-保留实际 rank，不补齐 rank，不展开稠密 AB，不将增量合并或重新量化到底座权重。
-串联 LoRA 节点可以叠加；切换文件/强度、设为 0 均沿用原节点的操作方式。
-采样切换模型时按相反顺序撤回 hook，并将闲置 adapter 权重移回 CPU。
+## 边界
 
-文本编码器仍按原来的 `strength_clip` 与元数据规则加载。
-LoKr、DoRA、带 mid/reshape 等不属于本次标准线性路径的格式继续原生挂载；不能将它们算作旁路热插拔。
-该旁路与原生合并后重量化的路径可能产生不同画面。
-自定义加载器若绕过 `comfy.sd.load_lora_for_models`，则不在本 hook 覆盖范围；原 LoRA 节点的文件缓存行为保持不变。
+- 全部预编译是**各模型入口分别形成完整图**，不把分词、ComfyUI 调度、采样器循环、VSR 或文件读写合成一张工作流图。
+- 动态 VBAR 权重驻留当前不支持严格完整图；需要兼容的静态权重驻留和量化后端。不支持时会报错，可关闭后使用逐元素或原生模式。
+- 首次编译可能耗时并增加内存占用；不保证加速、任意形状免重编译或浮点结果逐值相同。补齐也不会跳过空位上的 Linear/MLP 计算。
 
-这是实验功能。首次运行可能明显更慢；改变输入或 LoRA 可能触发重编译。
-补齐不会省掉空位上的 Linear/MLP 计算；更大容量不代表更快。
-预编译可能改变浮点融合顺序，尚不承诺与关闭编译逐值相同或带来加速。
+## 源码与检查
 
-## 实现边界与验证
+- [`__init__.py`](__init__.py)：节点输入、模型加载与模式选择。
+- [`runtime.py`](runtime.py)：逐元素编译与 token 预填充。
+- [`full_precompile.py`](full_precompile.py)：严格完整图入口及受管理的方法替换。
+- [`hot_lora.py`](hot_lora.py)：普通 LoRA 节点的旁路接入与还原。
 
-核心实现位于 [`runtime.py`](runtime.py) 与 [`hot_lora.py`](hot_lora.py)，节点入口为 [`__init__.py`](__init__.py)。
-
-本节点检查的是原生映射 key、A/B 配对是否存在，以及实际线性层的维度。它没有接入研究原型中额外的来源／版本／绑定代次有效位，也不预编译独立的低秩 A/B 算子；不要将另一套实验实现的结果直接当作本节点的验收结论。
-
-预编译和热 LoRA 都是实验选项，默认关闭。没有保证任意 ComfyUI 版本、任意 rank、并发请求或推理中途替换都可用，也没有发布稳定加速或无损画质承诺。
-
-CPU 源码检查，不加载 ComfyUI、PyTorch 或模型：
+无需 GPU 的源码和接口检查：
 
 ```bash
 python scripts/check_source.py
+python -m unittest discover -s tests -p "test_*.py"
 ```
 
-可选 GPU 验证脚本，使用已有 ComfyUI Python 运行：
+可选 GPU 验证使用已有 ComfyUI Python：
 
 ```bash
+python tests/verify_full_precompile.py --comfy-dir "PATH_TO_COMFYUI"
+python tests/verify_full_krea.py --comfy-dir "PATH_TO_COMFYUI"
 python tests/verify_runtime.py --comfy-dir "PATH_TO_COMFYUI"
 python tests/verify_hot_lora.py --comfy-dir "PATH_TO_COMFYUI"
-python tests/verify_real_loader.py --comfy-dir "PATH_TO_COMFYUI"
-python tests/verify_real_hot_lora.py --comfy-dir "PATH_TO_COMFYUI" --lora-a "krea2/1999.safetensors" --lora-b "krea2/konya_karasue_krea2_lora_r32_a32_1536-000016.safetensors"
 ```
 
-前两个脚本使用小型随机模型／合成 LoRA，但仍需 CUDA；后两个需要本机实际权重，覆盖加载、实际 block、切换及还原，不是完整出图性能基准。默认产物写入 `.test-output/`，可用 `--output-dir` 指定目录。模型文件名可通过 `--dit-name`、`--text-encoder-name`、`--vae-name` 指定。所有脚本支持 `--help`。
+`verify_full_precompile.py` 检查计算入口、ConvRot 桥接与方法恢复；`verify_full_krea.py` 使用小型随机 Krea2 网络检查完整前向。实际权重检查见 `tests/verify_real_loader.py`、`tests/verify_real_hot_lora.py` 和 `tests/verify_real_full_precompile.py`；最后一项以小输入探测 DiT 整图兼容性，不是完整生成。脚本支持 `--help`，默认产物写入 `.test-output/`。CI 只检查 CPU 源码、接口和编译控制，不代替实际模型的兼容性与性能验证。
 
-GitHub CI 只执行 CPU 源码、翻译和 CLI 检查，不代表重跑了 GPU 或实际模型测试。
+## 许可证
 
-## 许可证与上游
-
-源码采用 [GNU GPL v3](LICENSE)。Krea2 结构和旁路 API 来自 [ComfyUI](https://github.com/Comfy-Org/ComfyUI)，数学与模型设计来自相应上游；说明见 [NOTICE](NOTICE)。本仓库不分发 ComfyUI 本体、权重或编译产物。
+[GNU GPL v3](LICENSE)。模型结构和旁路 API 使用 [ComfyUI](https://github.com/Comfy-Org/ComfyUI) 的实现；上游说明见 [NOTICE](NOTICE)。本仓库不分发模型权重。

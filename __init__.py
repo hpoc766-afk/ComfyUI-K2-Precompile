@@ -5,6 +5,7 @@ from comfy.ldm.krea2.model import SingleStreamDiT
 
 from .hot_lora import enable_hot_lora
 from .runtime import patch_krea2
+from .full_precompile import patch_full_models
 
 
 class K2PrecompileLoader:
@@ -23,17 +24,21 @@ class K2PrecompileLoader:
                 "vae_name": (vae_files, {"default": vae_default} if vae_default in vae_files else {}),
                 "precompile": ("BOOLEAN", {
                     "default": False,
-                    "tooltip": "首次采样时编译主干的调制/残差算子；关闭时原生加载。",
+                    "tooltip": "逐元素模式：首次采样编译调制/残差；仅在全部预编译关闭时生效。",
                 }),
                 "prefill_tokens": ("INT", {
                     "default": 5120, "min": 0, "max": 65536, "step": 1,
-                    "tooltip": "启用预编译时的文本+图像 token 总容量；0 不补齐。超出容量会报错。",
+                    "tooltip": "仅逐元素模式使用的文本+图像token容量；0不补齐。全部预编译忽略此项。",
                 }),
             },
             "optional": {
                 "hot_lora": ("BOOLEAN", {
                     "default": False,
                     "tooltip": "验证 K2 权重名称及适配器维度后，让后续 LoRA 加载节点使用可逆低秩旁路热插拔。",
+                }),
+                "full_precompile": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": "严格编译TE Transformer、DiT前向和VAE编解码；需要兼容的静态权重驻留，动态VBAR不支持。优先于逐元素模式，不支持时报错。",
                 }),
             },
         }
@@ -42,16 +47,18 @@ class K2PrecompileLoader:
     RETURN_NAMES = ("模型", "文本编码器", "变分自编码器")
     FUNCTION = "load"
     CATEGORY = "K2/模型加载"
-    DESCRIPTION = "统一加载 K2 主干模型、文本编码器和变分自编码器，可分别启用预编译与 LoRA 热插拔。"
+    DESCRIPTION = "加载K2模型，可选择逐元素预编译、TE/DiT/VAE完整图编译与LoRA热插拔。"
     EXPERIMENTAL = True
 
-    def load(self, dit_name, text_encoder_name, vae_name, precompile, prefill_tokens, hot_lora=False):
+    def load(self, dit_name, text_encoder_name, vae_name, precompile, prefill_tokens, hot_lora=False, full_precompile=False):
         model, = nodes.UNETLoader().load_unet(dit_name, "default")
         if not isinstance(model.get_model_object("diffusion_model"), SingleStreamDiT):
             raise ValueError("DiT 文件不是 Krea2 模型，请选择 K2 主干权重。")
         clip, = nodes.CLIPLoader().load_clip(text_encoder_name, type="krea2")
         vae, = nodes.VAELoader().load_vae(vae_name)
-        if precompile:
+        if full_precompile:
+            model, clip, vae = patch_full_models(model, clip, vae)
+        elif precompile:
             model = patch_krea2(model, prefill_tokens, compile_blocks=True)
         if hot_lora:
             model = enable_hot_lora(model)
