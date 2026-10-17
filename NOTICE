@@ -1,0 +1,14 @@
+ComfyUI-K2-Precompile
+Copyright (C) 2026 hpoc766-afk
+SPDX-License-Identifier: GPL-3.0-only
+
+This repository contains the standalone ComfyUI node implementation.
+It integrates the Krea2 SingleStreamDiT and LoRA bypass APIs provided by
+ComfyUI (https://github.com/Comfy-Org/ComfyUI).
+The compiled block wrapper follows the upstream Krea2 block's mathematical
+sequence; the native model and adapter calculations remain upstream code.
+ComfyUI and its contributors retain their respective copyrights.
+
+The included source is distributed under GNU GPL version 3; see LICENSE.
+Model weights, ComfyUI itself, Python environments and compiled caches are
+not included. Model and third-party dependency licenses remain applicable.
