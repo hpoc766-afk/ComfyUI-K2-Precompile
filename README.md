@@ -38,7 +38,7 @@ git -C custom_nodes/ComfyUI-K2-Precompile pull --ff-only
 
 **逐元素模式**使用 `torch.compile / Inductor` 分别编译加法、乘法，归一化、Attention、MLP 和权重读取仍沿用原生实现。指定 token 容量时，主干输入补齐到该容量，attention mask 隔离空位，RoPE 保留真实位置；最后一个 block 后截回有效长度，再执行原输出投影。
 
-**全部预编译模式**将 DiT 的完整前向、TE 的 Transformer 前向、VAE 的 `encode` 和 `decode` 注册为受模型管理器控制的编译入口。首次实际调用使用 `torch.compile(backend="inductor", fullgraph=True, dynamic=True)` 构建计划，后续调用复用兼容计划。模型卸载时恢复原方法；LoRA 或输入变化可能使已有 guards 不匹配而产生新计划。ConvRot 线性内核通过外部算子节点和 FakeTensor 形状规则接入，内部保留原生 CUDA 计算。此模式不启用 CUDA Graph。
+**全部预编译模式**将 DiT 的完整前向、TE 的 Transformer 前向、VAE 的 `encode` 和 `decode` 注册为受模型管理器控制的编译入口。首次实际调用使用 `torch.compile(backend="inductor", fullgraph=True, dynamic=True)` 构建计划，后续调用复用兼容计划。模型卸载时恢复原方法；LoRA 或输入变化可能使已有 guards 不匹配而产生新计划。编译层只包装原模型计算入口，不识别或展开量化布局，不注册格式专用算子，也不替换内部线性层。所有算子及其编译支持由原模型后端提供。此模式不启用 CUDA Graph。
 
 `fullgraph=True` 要求每个入口可完整追踪。不支持的操作或执行错误会标出组件并抛出异常，不会静默转成部分编译或 eager 执行。
 
@@ -47,7 +47,7 @@ git -C custom_nodes/ComfyUI-K2-Precompile pull --ff-only
 ## 边界
 
 - 全部预编译是**各模型入口分别形成完整图**，不把分词、ComfyUI 调度、采样器循环、VSR 或文件读写合成一张工作流图。
-- 动态 VBAR 权重驻留当前不支持严格完整图；需要兼容的静态权重驻留和量化后端。不支持时会报错，可关闭后使用逐元素或原生模式。
+- 动态 VBAR 权重驻留当前不支持严格完整图；需要兼容的静态权重驻留。量化格式是否可编译取决于原后端，本节点不提供格式专用补丁；不支持时会报错，可关闭后使用逐元素或原生模式。
 - 首次编译可能耗时并增加内存占用；不保证加速、任意形状免重编译或浮点结果逐值相同。补齐也不会跳过空位上的 Linear/MLP 计算。
 
 ## 源码与检查
@@ -73,7 +73,7 @@ python tests/verify_runtime.py --comfy-dir "PATH_TO_COMFYUI"
 python tests/verify_hot_lora.py --comfy-dir "PATH_TO_COMFYUI"
 ```
 
-`verify_full_precompile.py` 检查计算入口、ConvRot 桥接与方法恢复；`verify_full_krea.py` 使用小型随机 Krea2 网络检查完整前向。实际权重检查见 `tests/verify_real_loader.py`、`tests/verify_real_hot_lora.py` 和 `tests/verify_real_full_precompile.py`；最后一项以小输入探测 DiT 整图兼容性，不是完整生成。脚本支持 `--help`，默认产物写入 `.test-output/`。CI 只检查 CPU 源码、接口和编译控制，不代替实际模型的兼容性与性能验证。
+`verify_full_precompile.py` 检查计算入口、变化输入与方法恢复；`verify_full_krea.py` 使用小型随机 Krea2 网络检查完整前向。实际权重检查见 `tests/verify_real_loader.py`、`tests/verify_real_hot_lora.py` 和 `tests/verify_real_full_precompile.py`；最后一项以小输入探测 DiT 整图兼容性，不是完整生成。脚本支持 `--help`，默认产物写入 `.test-output/`。CI 只检查 CPU 源码、接口和编译控制，不代替实际模型的兼容性与性能验证。
 
 ## 许可证
 

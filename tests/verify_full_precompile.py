@@ -52,31 +52,6 @@ for name,patcher,get in entries:
         patcher.unpatch_model(unpatch_weights=False)
         assert get()==originals[name],name+' method was not restored'
 
-# Preserve the original ConvRot CUDA calculation while supplying an opaque
-# tensor-only operator and a FakeTensor shape rule to the compiler.
-import comfy.quant_ops
-class QuantLinear(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-        w=torch.randn(128,256,device='cuda',dtype=torch.bfloat16)*.02
-        self.weight=torch.nn.Parameter(comfy.quant_ops.QuantizedTensor.from_float(w,'TensorCoreConvRotW4A4Layout'),requires_grad=False)
-    def _forward(self,x,weight,bias):return torch.nn.functional.linear(x,weight,bias)
-    def forward(self,x):return self._forward(x,self.weight,None)
-qroot=torch.nn.Module();qroot.q=QuantLinear()
-qpatch=ModelPatcher(qroot,torch.device('cuda'),torch.device('cpu'))
-xq=torch.randn(1,32,256,device='cuda',dtype=torch.bfloat16)
-expected_q=qroot.q(xq).clone();q_original=qroot.q._forward
-full.patch_quantized_linears(qpatch)
-qpatch.patch_model(load_weights=False)
-try:
-    qentry=full.FullGraphCall(qroot.q.forward,'ConvRot完整前向')
-    actual_q=qentry(xq);torch.cuda.synchronize()
-    torch.testing.assert_close(actual_q,expected_q,rtol=0,atol=0)
-    results['convrot_full_graph_exact']=True
-finally:
-    qpatch.unpatch_model(unpatch_weights=False)
-    assert qroot.q._forward==q_original
-
 def unsupported(value):
     if value.sum().item()>0:return value+1
     return value-1
@@ -89,5 +64,5 @@ import json
 print(json.dumps(results,indent=2),flush=True)
 # Dispose patchers while ComfyUI callback modules are still available.
 import gc
-del entries,patcher,model,clip,vae,m,c,v,root,te_root,originals,qroot,qpatch,qentry,q_original
+del entries,patcher,model,clip,vae,m,c,v,root,te_root,originals
 gc.collect()

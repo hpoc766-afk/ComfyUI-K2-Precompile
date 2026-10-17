@@ -62,69 +62,7 @@ def text_transformer_path(text_model):
                 break
         if current is not None and callable(getattr(current, "forward", None)):
             return path
-    raise ValueError("全部预编译：无法识别Krea2文本编码器的Transformer入口。")
-
-
-_CONVROT_OP = None
-
-
-def convrot_parts(weight):
-    # AOT can unpack tensor-subclass fields without Dynamo materializing the
-    # intermediate Params Python object produced by a dtype cast.
-    return weight._qdata, weight._params.scale
-
-
-def convrot_operator():
-    """Keep the existing CUDA implementation opaque, with tensor-only FX inputs."""
-    global _CONVROT_OP
-    torch._dynamo.allow_in_graph(convrot_parts)
-    if _CONVROT_OP is not None:
-        return _CONVROT_OP
-    if hasattr(torch.ops.k2_precompile, "convrot_linear"):
-        _CONVROT_OP = torch.ops.k2_precompile.convrot_linear.default
-        return _CONVROT_OP
-
-    @torch.library.custom_op("k2_precompile::convrot_linear", mutates_args=())
-    def linear(x: torch.Tensor, qweight: torch.Tensor, scales: torch.Tensor,
-               bias: torch.Tensor | None, rotation: int, group: int,
-               linear_dtype: str) -> torch.Tensor:
-        from comfy_kitchen.tensor.convrot_w4a4 import convrot_w4a4_linear
-        return convrot_w4a4_linear(x, qweight, scales, bias=bias,
-                                  convrot_groupsize=rotation, quant_group_size=group,
-                                  linear_dtype=linear_dtype)
-
-    @linear.register_fake
-    def fake(x, qweight, scales, bias, rotation, group, linear_dtype):
-        return x.new_empty((*x.shape[:-1], qweight.shape[0]))
-
-    _CONVROT_OP = linear
-    return _CONVROT_OP
-
-
-def patch_quantized_linears(patcher):
-    named = getattr(patcher.model, "named_modules", None)
-    if not callable(named):
-        return
-    for name, module in named():
-        weight = getattr(module, "weight", None)
-        if getattr(weight, "_layout_cls", None) != "TensorCoreConvRotW4A4Layout" or not callable(getattr(module, "_forward", None)):
-            continue
-        path = f"{name}._forward" if name else "_forward"
-        params = weight._params
-        if params.transposed:
-            continue
-        original = patcher.get_model_object(path)
-        operator = convrot_operator()
-
-        def forward(x, weight, bias, _original=original, _operator=operator,
-                    _rotation=params.convrot_groupsize, _group=params.quant_group_size,
-                    _linear_dtype=params.linear_dtype):
-            if getattr(weight, "_layout_cls", None) != "TensorCoreConvRotW4A4Layout":
-                return _original(x, weight, bias)
-            qweight, scales = convrot_parts(weight)
-            return _operator(x, qweight, scales, bias, _rotation, _group, _linear_dtype)
-
-        patcher.add_object_patch(path, forward)
+    raise ValueError("全部预编译：无法识别文本编码器的Transformer入口。")
 
 
 def patch_full_models(model, clip, vae):
@@ -154,6 +92,4 @@ def patch_full_models(model, clip, vae):
     patched_clip.patcher.add_object_patch(f"{text_path}.forward", FullGraphCall(te_forward, "TE Transformer"))
     patched_vae.patcher.add_object_patch("encode", FullGraphCall(vae_model.encode, "VAE encode"))
     patched_vae.patcher.add_object_patch("decode", FullGraphCall(vae_model.decode, "VAE decode"))
-    for patcher in (patched_model, patched_clip.patcher, patched_vae.patcher):
-        patch_quantized_linears(patcher)
     return patched_model, patched_clip, patched_vae

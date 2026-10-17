@@ -94,6 +94,24 @@ class FullGraphContract(unittest.TestCase):
         self.assertIs(v.first_stage_model,vae.first_stage_model)
         compiler.assert_not_called()
 
+    def test_model_wrapping_does_not_inspect_or_replace_leaf_operators(self):
+        module=load_full(Mock());model,clip,vae=bundle()
+        leaf=types.SimpleNamespace(_forward=lambda x:x)
+        native_leaf=leaf._forward
+        model.model.diffusion_model.projection=leaf
+        # A compiler adapter has no reason to enumerate quantized layers or
+        # unpack their private layouts. These methods must remain unused.
+        checks=[]
+        for root in [model.model,clip.cond_stage_model,vae.first_stage_model]:
+            scan=Mock(side_effect=AssertionError('Weight layout enumeration is outside the compiler boundary'))
+            root.named_modules=scan;checks.append(scan)
+        m,c,v=module.patch_full_models(model,clip,vae)
+        for scan in checks:scan.assert_not_called()
+        self.assertIs(leaf._forward,native_leaf)
+        self.assertEqual(set(m.object_patches),{'diffusion_model.forward'})
+        self.assertEqual(set(c.patcher.object_patches),{'qwen3vl_4b.transformer.forward'})
+        self.assertEqual(set(v.patcher.object_patches),{'encode','decode'})
+
     def test_unknown_encoder_fails_before_patching(self):
         module=load_full(Mock());model,clip,vae=bundle();clip.cond_stage_model=object()
         with self.assertRaises(ValueError):module.patch_full_models(model,clip,vae)
