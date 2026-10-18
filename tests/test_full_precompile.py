@@ -133,6 +133,7 @@ class LoaderOptions(unittest.TestCase):
         stubs={name:module,'folder_paths':types.SimpleNamespace(get_filename_list=lambda key:[]),
           'nodes':types.SimpleNamespace(UNETLoader=lambda:types.SimpleNamespace(load_unet=lambda *a:(model,)),CLIPLoader=lambda:types.SimpleNamespace(load_clip=lambda *a,**kw:(clip,)),VAELoader=type('VAE',(),{'vae_list':lambda self:[],'load_vae':lambda self,*a:(vae,)})),
           'comfy.ldm.krea2.model':types.SimpleNamespace(SingleStreamDiT=DiT),
+          'comfy.text_encoders.krea2':types.SimpleNamespace(Krea2Tokenizer=object),
           name+'.runtime':types.SimpleNamespace(patch_krea2=partial),name+'.hot_lora':types.SimpleNamespace(enable_hot_lora=hot),name+'.full_precompile':types.SimpleNamespace(patch_full_models=full)}
         with patch.dict(sys.modules,stubs):spec.loader.exec_module(module)
         return module,model,clip,vae,partial,full,hot

@@ -34,6 +34,19 @@ git -C custom_nodes/ComfyUI-K2-Precompile pull --ff-only
 
 全部预编译开启时，`启用预编译` 与 `预填充令牌数` 不再参与配置，模型使用实际输入形状。两个编译开关都关闭时沿用原生计算。
 
+## 独立 Token 计数器
+
+新增 **K2 Token 计数器**（`K2TokenCounter`，分类 `K2/工具`），与模型加载器分开使用。输入正向提示词、latent，可选负向提示词与对齐倍数。使用本地 Krea2 tokenizer，只读取 latent 形状，不加载 TE/DiT/VAE 权重，也不修改采样或预填充设置。运行后在节点内显示统计，并输出六个整数及说明文本：正向原提示词、负向原提示词、latent、DiT 文本、联合长度、预填充参考。
+
+- 原提示词分词数不含模板；DiT 文本长度按 Krea2 编码器裁掉系统和用户开头后的实际序列统计，保留结尾特殊 token。12 层文本特征不乘入序列长度。
+- latent token 数为 `ceil(H_latent / 2) × ceil(W_latent / 2)`，包含奇数尺寸的 patch 补齐，不乘 batch 或帧数。
+- 联合长度为 `latent_tokens + max(positive_text_tokens, negative_text_tokens)`，正负不相加。仅使用正向的 CFG=1 场景可能比这个参考值更小。
+- 参考容量向上对齐，默认 64；对齐倍数设为 1 得到精确联合长度。例如 832×1216 图像对应 latent 152×104，占 3,952 token；DiT 文本为 98 时，联合 4,050，参考 4,096。
+
+将同一个 STRING 提示词输出分支连接到计数器和文本编码节点，确保内容一致；输入框可右键转为输入。参考值可填写到加载器的 `预填充令牌数`。从独立空 latent 节点计数时也可连接整数输出；若 latent 已依赖同一个加载器的下游采样/编码，不要回接形成循环。
+
+当前统计纯文本 Krea2 文生图，不计额外参考图 latent，也不支持图片文本嵌入或 `embedding:` 展开。使用原生 Krea2 模板；如外部插件改变了文本模板/编码裁剪规则，应以实际 conditioning 长度为准。新节点和节点内显示脚本在 ComfyUI 重新加载插件后可用。
+
 ## 实现方式
 
 **逐元素模式**使用 `torch.compile / Inductor` 分别编译加法、乘法，归一化、Attention、MLP 和权重读取仍沿用原生实现。指定 token 容量时，主干输入补齐到该容量，attention mask 隔离空位，RoPE 保留真实位置；最后一个 block 后截回有效长度，再执行原输出投影。
@@ -56,6 +69,8 @@ git -C custom_nodes/ComfyUI-K2-Precompile pull --ff-only
 - [`runtime.py`](runtime.py)：逐元素编译与 token 预填充。
 - [`full_precompile.py`](full_precompile.py)：严格完整图入口及受管理的方法替换。
 - [`hot_lora.py`](hot_lora.py)：普通 LoRA 节点的旁路接入与还原。
+- [`token_counter.py`](token_counter.py)：独立的真实 tokenizer、latent patch 和预填充参考计数。
+- [`web/token_counter.js`](web/token_counter.js)：节点内只读统计显示。
 
 无需 GPU 的源码和接口检查：
 

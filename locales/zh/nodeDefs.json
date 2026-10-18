@@ -43,5 +43,36 @@
         "name": "变分自编码器"
       }
     }
+  },
+  "K2TokenCounter": {
+    "display_name": "K2 Token 计数器",
+    "description": "使用本地 Krea2 tokenizer 统计提示词、实际文本序列和 latent token，给出独立的预填充参考，不加载模型权重。",
+    "inputs": {
+      "positive": {
+        "name": "正向提示词",
+        "tooltip": "与正向文本编码节点使用同一份提示词。分别统计原提示词和去除 Krea2 模板前缀后的序列长度。"
+      },
+      "latent": {
+        "name": "潜空间",
+        "tooltip": "只读取实际 latent 尺寸，按 Krea2 的 2×2 patch 向上取整统计，不移动或修改张量。"
+      },
+      "negative": {
+        "name": "负向提示词",
+        "tooltip": "与负向文本编码节点使用同一份提示词；参考容量取正负较长序列，不相加。"
+      },
+      "alignment": {
+        "name": "参考对齐倍数",
+        "tooltip": "将联合 token 数向上对齐到此倍数。默认 64；设为 1 返回精确联合长度。"
+      }
+    },
+    "outputs": {
+      "0": {"name": "正向提示词 token"},
+      "1": {"name": "负向提示词 token"},
+      "2": {"name": "latent token"},
+      "3": {"name": "DiT 文本 token"},
+      "4": {"name": "联合 token"},
+      "5": {"name": "预填充参考 token"},
+      "6": {"name": "统计说明"}
+    }
   }
 }

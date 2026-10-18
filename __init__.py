@@ -6,6 +6,7 @@ from comfy.ldm.krea2.model import SingleStreamDiT
 from .hot_lora import enable_hot_lora
 from .runtime import patch_krea2
 from .full_precompile import patch_full_models
+from .token_counter import K2TokenCounter
 
 
 class K2PrecompileLoader:
@@ -65,5 +66,6 @@ class K2PrecompileLoader:
         return model, clip, vae
 
 
-NODE_CLASS_MAPPINGS = {"K2PrecompileLoader": K2PrecompileLoader}
-NODE_DISPLAY_NAME_MAPPINGS = {"K2PrecompileLoader": "K2 模型加载器"}
+NODE_CLASS_MAPPINGS = {"K2PrecompileLoader": K2PrecompileLoader, "K2TokenCounter": K2TokenCounter}
+NODE_DISPLAY_NAME_MAPPINGS = {"K2PrecompileLoader": "K2 模型加载器", "K2TokenCounter": "K2 Token 计数器"}
+WEB_DIRECTORY = "./web"

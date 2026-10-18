@@ -14,12 +14,20 @@ def main():
     for path in files:ast.parse(path.read_text(encoding='utf-8'),filename=str(path))
     expected={'dit_name','text_encoder_name','vae_name','precompile','prefill_tokens','hot_lora','full_precompile'}
     translations=[]
+    counters=[]
     for language in ['zh','zh-CN']:
-        node=json.loads((ROOT/'locales'/language/'nodeDefs.json').read_text(encoding='utf-8'))['K2PrecompileLoader']
+        locale=json.loads((ROOT/'locales'/language/'nodeDefs.json').read_text(encoding='utf-8'))
+        node=locale['K2PrecompileLoader']
         assert set(node['inputs'])==expected
         assert set(node['outputs'])=={'0','1','2'}
         translations.append(node)
+        counter=locale['K2TokenCounter']
+        assert set(counter['inputs'])=={'positive','latent','negative','alignment'}
+        assert set(counter['outputs'])=={str(i) for i in range(7)}
+        counters.append(counter)
     assert translations[0]==translations[1]
+    assert counters[0]==counters[1]
+    assert (ROOT/'web/token_counter.js').is_file()
     tree=ast.parse((ROOT/'__init__.py').read_text(encoding='utf-8'))
     loader=next(n for n in tree.body if isinstance(n,ast.ClassDef) and n.name=='K2PrecompileLoader')
     returns=next(ast.literal_eval(n.value) for n in loader.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='RETURN_TYPES' for t in n.targets))
