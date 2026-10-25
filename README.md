@@ -1,8 +1,10 @@
-# ComfyUI-K2-Precompile
+# ComfyUI-K2-Precompile · Kohaku 后端调度
 
 用于 ComfyUI 的 Krea2 模型加载节点，提供可选的模型计算预编译和 LoRA 热切换。
 
 节点名称：**K2 模型加载器**，分类：`K2/模型加载`。输出依次为模型、文本编码器和 VAE，可连接普通 LoRA、文本编码及采样节点。
+
+融合路径使用 **KohakuKernelRouter**：编译准备时按形状比较联合 kernel 与原后端组合，缓存并绑定获胜实现；注意力使用适配 GQA 的 **Kohaku FA**，48 个 Q 头直接共享 12 个 K/V 头，不复制 K/V、不保存完整注意力分数表。复用部分来自 KohakuMossTrainer，保留其许可及命名要求，见 [后端选择说明](docs/backend-routing.md)。
 
 ## 安装
 
@@ -20,6 +22,10 @@ git -C custom_nodes/ComfyUI-K2-Precompile pull --ff-only
 
 只保留一份安装，避免旧副本或目录联接造成同名节点重复注册。需要支持 Krea2、`PatcherInjection` 与 LoRA 旁路 API 的 ComfyUI，以及相互兼容的 PyTorch、comfy-kitchen 和 GPU 编译环境。本节点不下载权重，也不自动升级依赖。
 
+节点还包含有界权重缓冲复用、输入量化与权重搬运重叠，以及兼容 INT4 路径的 RMSNorm/调制/旋转量化融合；见 [权重 I/O 与输入量化](docs/io-input-quant.md)。
+
+启用当前原生整图路径前，按 [构建说明](docs/build.md) 生成 `native_dispatch` 和所需融合库。首次调用还会编译 C++ 执行入口与 Triton FA。关闭预编译时可直接沿用普通模型加载。
+
 ## 参数
 
 | 参数 | 作用 |
@@ -27,12 +33,13 @@ git -C custom_nodes/ComfyUI-K2-Precompile pull --ff-only
 | 主干模型 | 选择 Krea2 DiT 权重 |
 | 文本编码器 | 选择 Krea2 使用的文本编码器权重 |
 | 变分自编码器 | 选择图像与潜空间转换的 VAE 权重 |
-| 启用预编译 | 默认关闭；编译 DiT block 外围的逐元素调制与残差运算 |
-| 预填充令牌数 | 仅逐元素模式使用；文本与图像联合 token 总容量，0 表示不补齐 |
+| 启用预编译 | 默认关闭；整个 K2 DiT 前向以单入口、`fullgraph=True` 编译 |
+| 预填充令牌数 | 旧工作流兼容参数，当前使用实际 token 长度，不执行预填充 |
 | 启用 LoRA 热插拔 | 默认关闭；后续普通 LoRA 节点使用兼容的低秩旁路 |
-| 全部预编译（模型计算） | 默认关闭；分别严格编译 TE Transformer、DiT 前向及 VAE 编解码，优先于逐元素模式 |
+| 融合前向算子 | 默认关闭；融合归一化调制、激活乘法、Q/K 后处理，以及兼容 INT4 路径的 Q/K 投影和输出门控残差 |
+| 全部预编译（模型计算） | 默认关闭；在完整 DiT 编译之外，另编译 TE Transformer 和 VAE 编解码入口 |
 
-全部预编译开启时，`启用预编译` 与 `预填充令牌数` 不再参与配置，模型使用实际输入形状。两个编译开关都关闭时沿用原生计算。
+开启 `启用预编译` 即使用完整 DiT 编译。`全部预编译` 还会编译 TE/VAE，要求它们的后端支持完整追踪。两个开关都关闭时沿用原生计算。
 
 ## 独立 Token 计数器
 
@@ -43,15 +50,33 @@ git -C custom_nodes/ComfyUI-K2-Precompile pull --ff-only
 - 联合长度为 `latent_tokens + max(positive_text_tokens, negative_text_tokens)`，正负不相加。仅使用正向的 CFG=1 场景可能比这个参考值更小。
 - 参考容量向上对齐，默认 64；对齐倍数设为 1 得到精确联合长度。例如 832×1216 图像对应 latent 152×104，占 3,952 token；DiT 文本为 98 时，联合 4,050，参考 4,096。
 
-将同一个 STRING 提示词输出分支连接到计数器和文本编码节点，确保内容一致；输入框可右键转为输入。参考值可填写到加载器的 `预填充令牌数`。从独立空 latent 节点计数时也可连接整数输出；若 latent 已依赖同一个加载器的下游采样/编码，不要回接形成循环。
+将同一个 STRING 提示词输出分支连接到计数器和文本编码节点，确保内容一致；输入框可右键转为输入。计数结果用于查看实际输入规模。旧参数 `预填充令牌数` 保留以加载已有工作流，整图模式不使用它。从独立空 latent 节点计数时也可连接整数输出；若 latent 已依赖同一个加载器的下游采样/编码，不要回接形成循环。
 
 当前统计纯文本 Krea2 文生图，不计额外参考图 latent，也不支持图片文本嵌入或 `embedding:` 展开。使用原生 Krea2 模板；如外部插件改变了文本模板/编码裁剪规则，应以实际 conditioning 长度为准。新节点和节点内显示脚本在 ComfyUI 重新加载插件后可用。
 
 ## 实现方式
 
-**逐元素模式**使用 `torch.compile / Inductor` 分别编译加法、乘法，归一化、Attention、MLP 和权重读取仍沿用原生实现。指定 token 容量时，主干输入补齐到该容量，attention mask 隔离空位，RoPE 保留真实位置；最后一个 block 后截回有效长度，再执行原输出投影。
+**完整 DiT 编译**只在模型前向入口调用 `torch.compile(fullgraph=True, dynamic=True)`。图覆盖文本融合、时间步处理、全部主干 block 和最终输出层。没有逐 block 或逐算子编译入口。编译后日志显示 `captured complete DiT graph` 及 FX 节点数量；输入布局、LoRA 或其他 guards 变化时可能重新捕获另一张完整图。
 
-**全部预编译模式**将 DiT 的完整前向、TE 的 Transformer 前向、VAE 的 `encode` 和 `decode` 注册为受模型管理器控制的编译入口。首次实际调用使用 `torch.compile(backend="inductor", fullgraph=True, dynamic=True)` 构建计划，后续调用复用兼容计划。模型卸载时恢复原方法；LoRA 或输入变化可能使已有 guards 不匹配而产生新计划。编译层只包装原模型计算入口，不识别或展开量化布局，不注册格式专用算子，也不替换内部线性层。所有算子及其编译支持由原模型后端提供。此模式不启用 CUDA Graph。
+量化投影通过图内算子调用 INT4、INT8、FP8 E4M3/E5M2、BF16/FP16 的对应计算路径。原生执行计划在编译准备阶段注册权重格式和 VBAR 元数据，运行时由 C++ 管理权重准备、传输、完成事件和临时缓冲，不逐算子回调 Python。普通线性 LoRA 通过低秩旁路计算；不支持的投影或权重处理会报告错误，不能保证所有第三方补丁均可进入原生计划。
+
+开启 **融合前向算子** 后，SM89 ConvRot INT4 可用共享输入量化、Q/K GEMM 内归一化与 RoPE、输出投影门控残差，以及 RMSNorm/调制/旋转量化融合。Kohaku 在编译准备阶段按形状择优，热态使用绑定的原生路径。输入激活及打包结果不跨前向缓存，低精度舍入点在内核中显式保留。早期独立投影实现及历史记录见 [前向融合说明](docs/forward-fusion.md)，当前路径见 [后端调度](docs/backend-routing.md) 和 [权重 I/O 与输入量化](docs/io-input-quant.md)。
+
+**全部预编译模式**额外为 TE Transformer、VAE `encode/decode` 各建立完整编译入口。TE/VAE 的动态权重及量化能力仍由各自后端决定。此模式不启用 CUDA Graph。模型级入口通过 ModelPatcher 挂载与恢复，DiT 内部的图适配方法只在调用期间安装，并在返回或异常时恢复。
+
+当前版本的实测环境为 Windows 11、RTX 4060 Laptop 8 GB、Python 3.12.10、PyTorch 2.9.1+cu130，真实 Krea2-Turbo ConvRot INT4 权重，BF16 激活，动态 VBAR 预留 1536 MiB。832×1216 对应 3952 图像 token，加构造的 98 文本 token，共 **4050 token，额外填充 0**。`4096` 仅是调优长度分桶。
+
+同一模型实例、五轮交错热态 DiT 前向：
+
+| 配置 | 中位耗时 |
+|---|---:|
+| 之前的编译路径，已含 Kohaku FA | 1.359 秒 |
+| 缓冲复用与输入量化/搬运重叠 | 1.207 秒 |
+| 再加归一化调制/旋转量化融合 | **1.175 秒** |
+
+合计减少约 13.5%。三种配置各捕获一张完整图；最终路径每次前向实际执行 56 次归一化量化融合。每次 H2D 仍约 2.451 GiB。此处测的是构造输入下的模型前向，不含采样器、独立文本编码和 VAE，不能作为完整出图耗时。原始计时与运行计数见 [测速数据](docs/benchmarks/io-input-quant-4050.json)。
+
+**当前 Kohaku FA 和归一化量化变更仅完成上述速度测量，尚未追加数值或出图对照。** 旧版前向的逐值一致、769 次 kernel 启动和旧采样计时属于历史实现，不代表当前版本。
 
 `fullgraph=True` 要求每个入口可完整追踪。不支持的操作或执行错误会标出组件并抛出异常，不会静默转成部分编译或 eager 执行。
 
@@ -60,13 +85,18 @@ git -C custom_nodes/ComfyUI-K2-Precompile pull --ff-only
 ## 边界
 
 - 全部预编译是**各模型入口分别形成完整图**，不把分词、ComfyUI 调度、采样器循环、VSR 或文件读写合成一张工作流图。
-- 动态 VBAR 权重驻留当前不支持严格完整图；需要兼容的静态权重驻留。量化格式是否可编译取决于原后端，本节点不提供格式专用补丁；不支持时会报错，可关闭后使用逐元素或原生模式。
-- 首次编译可能耗时并增加内存占用；不保证加速、任意形状免重编译或浮点结果逐值相同。补齐也不会跳过空位上的 Linear/MLP 计算。
+- K2 DiT 已接入原生量化和动态 VBAR 算子；TE/VAE 的严格整图能力单独由其后端决定。
+- 首次编译的耗时应与复用同一模型实例后的执行耗时分开记录。形状或模型配置改变可能重新编译。
 
 ## 源码与检查
 
 - [`__init__.py`](__init__.py)：节点输入、模型加载与模式选择。
-- [`runtime.py`](runtime.py)：逐元素编译与 token 预填充。
+- [`runtime.py`](runtime.py)：旧加载器参数到完整 DiT 编译入口的兼容接口。
+- [`graph_ops.py`](graph_ops.py)：图内原生算子、当前权重依赖与可逆方法适配。
+- [`graph_model.py`](graph_model.py)：完整 DiT 的可追踪计算流程。
+- [`forward_kernels.py`](forward_kernels.py)：归一化调制、激活乘法和 Q/K 后处理融合。
+- [`projection_fusion.py`](projection_fusion.py)：组内共享量化和 Q/K 投影收尾融合接入。
+- [`kernels/qk_norm_rope.cu`](kernels/qk_norm_rope.cu)：INT4 Q/K GEMM、归一化和 RoPE 融合内核。
 - [`full_precompile.py`](full_precompile.py)：严格完整图入口及受管理的方法替换。
 - [`hot_lora.py`](hot_lora.py)：普通 LoRA 节点的旁路接入与还原。
 - [`token_counter.py`](token_counter.py)：独立的真实 tokenizer、latent patch 和预填充参考计数。
@@ -84,7 +114,6 @@ python -m unittest discover -s tests -p "test_*.py"
 ```bash
 python tests/verify_full_precompile.py --comfy-dir "PATH_TO_COMFYUI"
 python tests/verify_full_krea.py --comfy-dir "PATH_TO_COMFYUI"
-python tests/verify_runtime.py --comfy-dir "PATH_TO_COMFYUI"
 python tests/verify_hot_lora.py --comfy-dir "PATH_TO_COMFYUI"
 ```
 
@@ -92,4 +121,4 @@ python tests/verify_hot_lora.py --comfy-dir "PATH_TO_COMFYUI"
 
 ## 许可证
 
-[GNU GPL v3](LICENSE)。模型结构和旁路 API 使用 [ComfyUI](https://github.com/Comfy-Org/ComfyUI) 的实现；上游说明见 [NOTICE](NOTICE)。本仓库不分发模型权重。
+本项目自有代码采用 [GNU GPL v3](LICENSE)。`KohakuKernelRouter/` 的复用文件采用保留在 [third_party/KohakuMoss/LICENSE](third_party/KohakuMoss/LICENSE) 中的 KohakuMoss 许可；comfy-kitchen 和 CUTLASS 的许可与归属保存在 `third_party/`。模型结构和旁路 API 使用 [ComfyUI](https://github.com/Comfy-Org/ComfyUI) 的实现；来源和修改说明见 [NOTICE](NOTICE)。本仓库不分发模型权重。

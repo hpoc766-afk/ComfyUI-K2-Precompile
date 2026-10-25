@@ -12,7 +12,7 @@ ROOT=Path(__file__).resolve().parents[1]
 def main():
     files=[p for p in ROOT.rglob('*.py') if not any(part in {'.git','.test-output','__pycache__','.venv','venv'} for part in p.relative_to(ROOT).parts)]
     for path in files:ast.parse(path.read_text(encoding='utf-8'),filename=str(path))
-    expected={'dit_name','text_encoder_name','vae_name','precompile','prefill_tokens','hot_lora','full_precompile'}
+    expected={'dit_name','text_encoder_name','vae_name','precompile','prefill_tokens','hot_lora','full_precompile','fuse_epilogue'}
     translations=[]
     counters=[]
     for language in ['zh','zh-CN']:

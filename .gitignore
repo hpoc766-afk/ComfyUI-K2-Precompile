@@ -1,6 +1,7 @@
 __pycache__/
 *.py[cod]
 .test-output/
+.kernel-build/
 .venv/
 venv/
 *.safetensors
@@ -11,6 +12,13 @@ venv/
 *.npz
 *.dll
 *.pyd
+*.so
+*.o
+*.obj
+*.lib
+*.exp
+*.cubin
+*.ptx
 *.exe
 *.whl
 *.log

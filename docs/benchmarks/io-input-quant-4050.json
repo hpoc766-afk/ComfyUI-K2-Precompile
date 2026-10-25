@@ -1,0 +1,558 @@
+{
+  "environment": {
+    "os": "Windows 11",
+    "python": "3.12.10",
+    "pytorch": "2.9.1+cu130",
+    "gpu": "NVIDIA GeForce RTX 4060 Laptop GPU",
+    "vram_gib": 8,
+    "weight_format": "ConvRot INT4",
+    "activation_dtype": "bfloat16"
+  },
+  "input": {
+    "kind": "synthetic latent and text features with real model weights",
+    "batch": 1,
+    "latent_spatial_shape": [104, 152],
+    "image_tokens": 3952,
+    "text_tokens": 98,
+    "padding_tokens": 0,
+    "timing_scope": "DiT forward only; no sampler, independent text encoder or VAE"
+  },
+  "resolution": [
+    832,
+    1216
+  ],
+  "tokens": 4050,
+  "blocks": 28,
+  "vbar_headroom_mib": 1536,
+  "first_call": {
+    "baseline": {
+      "wall_ms": 61794.5224000141,
+      "gpu_span_ms": 61794.19921875
+    },
+    "io_overlap": {
+      "wall_ms": 41114.42239989992,
+      "gpu_span_ms": 41114.06640625
+    },
+    "io_norm_quant": {
+      "wall_ms": 38851.21940006502,
+      "gpu_span_ms": 38850.859375
+    }
+  },
+  "medians_ms": {
+    "baseline": 1359.1318000108004,
+    "io_overlap": 1206.689800019376,
+    "io_norm_quant": 1175.0272000208497
+  },
+  "measurements": [
+    {
+      "wall_ms": 1499.6951000066474,
+      "gpu_span_ms": 1499.6378173828125,
+      "mode": "baseline",
+      "round": 0
+    },
+    {
+      "wall_ms": 1245.645400020294,
+      "gpu_span_ms": 1245.5833740234375,
+      "mode": "io_overlap",
+      "round": 0
+    },
+    {
+      "wall_ms": 1197.571099968627,
+      "gpu_span_ms": 1197.56689453125,
+      "mode": "io_norm_quant",
+      "round": 0
+    },
+    {
+      "wall_ms": 1207.6746999518946,
+      "gpu_span_ms": 1207.615478515625,
+      "mode": "io_norm_quant",
+      "round": 1
+    },
+    {
+      "wall_ms": 1207.2086000116542,
+      "gpu_span_ms": 1207.146484375,
+      "mode": "io_overlap",
+      "round": 1
+    },
+    {
+      "wall_ms": 1363.7828999198973,
+      "gpu_span_ms": 1363.7806396484375,
+      "mode": "baseline",
+      "round": 1
+    },
+    {
+      "wall_ms": 1359.1318000108004,
+      "gpu_span_ms": 1359.08544921875,
+      "mode": "baseline",
+      "round": 2
+    },
+    {
+      "wall_ms": 1206.689800019376,
+      "gpu_span_ms": 1206.6396484375,
+      "mode": "io_overlap",
+      "round": 2
+    },
+    {
+      "wall_ms": 1175.0272000208497,
+      "gpu_span_ms": 1175.0216064453125,
+      "mode": "io_norm_quant",
+      "round": 2
+    },
+    {
+      "wall_ms": 1158.374199992977,
+      "gpu_span_ms": 1158.3682861328125,
+      "mode": "io_norm_quant",
+      "round": 3
+    },
+    {
+      "wall_ms": 1189.0611000126228,
+      "gpu_span_ms": 1189.054443359375,
+      "mode": "io_overlap",
+      "round": 3
+    },
+    {
+      "wall_ms": 1354.7746000112966,
+      "gpu_span_ms": 1354.7694091796875,
+      "mode": "baseline",
+      "round": 3
+    },
+    {
+      "wall_ms": 1345.8921000128612,
+      "gpu_span_ms": 1345.88623046875,
+      "mode": "baseline",
+      "round": 4
+    },
+    {
+      "wall_ms": 1191.3582000415772,
+      "gpu_span_ms": 1191.3531494140625,
+      "mode": "io_overlap",
+      "round": 4
+    },
+    {
+      "wall_ms": 1166.2319999886677,
+      "gpu_span_ms": 1166.2254638671875,
+      "mode": "io_norm_quant",
+      "round": 4
+    }
+  ],
+  "tuning_decisions": {
+    "baseline": [
+      {
+        "kernel": "kohaku_fa",
+        "key": "torch.bfloat16-B98-H20-KV20-D128-Q64-K64-G1",
+        "config": {
+          "BM": 64,
+          "BN": 32,
+          "warps": 4,
+          "stages": 1
+        },
+        "source": "measured",
+        "timings_ms": {
+          "BM=16,BN=16,stages=1,warps=4": 6.3651838302612305,
+          "BM=64,BN=32,stages=1,warps=4": 0.3328000009059906
+        },
+        "failures": {}
+      },
+      {
+        "kernel": "kohaku_fa",
+        "key": "torch.bfloat16-B1-H20-KV20-D128-Q128-K128-G1",
+        "config": {
+          "BM": 64,
+          "BN": 32,
+          "warps": 4,
+          "stages": 1
+        },
+        "source": "measured",
+        "timings_ms": {
+          "BM=128,BN=32,stages=2,warps=4": 0.08064000308513641,
+          "BM=128,BN=64,stages=2,warps=8": 0.07772800326347351,
+          "BM=64,BN=64,stages=2,warps=4": 0.027648000046610832,
+          "BM=64,BN=32,stages=1,warps=4": 0.020479999482631683
+        },
+        "failures": {}
+      },
+      {
+        "kernel": "kohaku_fa",
+        "key": "torch.bfloat16-B1-H48-KV12-D128-Q4096-K4096-G2",
+        "config": {
+          "BM": 128,
+          "BN": 64,
+          "warps": 8,
+          "stages": 2
+        },
+        "source": "measured",
+        "timings_ms": {
+          "BM=128,BN=32,stages=2,warps=4": 16.709407806396484,
+          "BM=128,BN=64,stages=2,warps=8": 15.072256088256836,
+          "BM=64,BN=64,stages=2,warps=4": 25.871200561523438,
+          "BM=64,BN=32,stages=1,warps=4": 19.83180809020996
+        },
+        "failures": {}
+      },
+      {
+        "kernel": "joint_qkv",
+        "key": "[4096,1,6144,[6144,1536,1536,6144],[256,256,256,256],\"torch.bfloat16\"]",
+        "config": {
+          "path": "split"
+        },
+        "source": "measured",
+        "timings_ms": {
+          "path=split": 5.67193603515625,
+          "path=fused": 8.343551635742188
+        },
+        "failures": {}
+      },
+      {
+        "kernel": "residual_norm",
+        "key": "[4096,1,6144,[6144],[256],\"torch.bfloat16\"]",
+        "config": {
+          "path": "split"
+        },
+        "source": "measured",
+        "timings_ms": {
+          "path=split": 2.3756799697875977,
+          "path=fused": 3.9973440170288086
+        },
+        "failures": {}
+      },
+      {
+        "kernel": "joint_swiglu",
+        "key": "[4096,1,6144,[16384,16384],[256,256],\"torch.bfloat16\"]",
+        "config": {
+          "path": "split"
+        },
+        "source": "measured",
+        "timings_ms": {
+          "path=split": 10.088447570800781,
+          "path=fused": 12.85427188873291
+        },
+        "failures": {}
+      },
+      {
+        "kernel": "residual_norm",
+        "key": "[4096,1,16384,[6144],[256],\"torch.bfloat16\"]",
+        "config": {
+          "path": "split"
+        },
+        "source": "measured",
+        "timings_ms": {
+          "path=split": 5.196703910827637,
+          "path=fused": 16.062623977661133
+        },
+        "failures": {}
+      }
+    ],
+    "io_overlap": [
+      {
+        "kernel": "kohaku_fa",
+        "key": "torch.bfloat16-B98-H20-KV20-D128-Q64-K64-G1",
+        "config": {
+          "BM": 64,
+          "BN": 32,
+          "stages": 1,
+          "warps": 4
+        },
+        "source": "table",
+        "timings_ms": {},
+        "failures": {}
+      },
+      {
+        "kernel": "kohaku_fa",
+        "key": "torch.bfloat16-B1-H20-KV20-D128-Q128-K128-G1",
+        "config": {
+          "BM": 64,
+          "BN": 32,
+          "stages": 1,
+          "warps": 4
+        },
+        "source": "table",
+        "timings_ms": {},
+        "failures": {}
+      },
+      {
+        "kernel": "kohaku_fa",
+        "key": "torch.bfloat16-B1-H48-KV12-D128-Q4096-K4096-G2",
+        "config": {
+          "BM": 128,
+          "BN": 64,
+          "stages": 2,
+          "warps": 8
+        },
+        "source": "table",
+        "timings_ms": {},
+        "failures": {}
+      },
+      {
+        "kernel": "joint_qkv",
+        "key": "[4096,1,6144,[6144,1536,1536,6144],[256,256,256,256],\"torch.bfloat16\"]",
+        "config": {
+          "path": "split"
+        },
+        "source": "table",
+        "timings_ms": {},
+        "failures": {}
+      },
+      {
+        "kernel": "residual_norm",
+        "key": "[4096,1,6144,[6144],[256],\"torch.bfloat16\"]",
+        "config": {
+          "path": "split"
+        },
+        "source": "table",
+        "timings_ms": {},
+        "failures": {}
+      },
+      {
+        "kernel": "joint_swiglu",
+        "key": "[4096,1,6144,[16384,16384],[256,256],\"torch.bfloat16\"]",
+        "config": {
+          "path": "split"
+        },
+        "source": "table",
+        "timings_ms": {},
+        "failures": {}
+      },
+      {
+        "kernel": "residual_norm",
+        "key": "[4096,1,16384,[6144],[256],\"torch.bfloat16\"]",
+        "config": {
+          "path": "split"
+        },
+        "source": "table",
+        "timings_ms": {},
+        "failures": {}
+      }
+    ],
+    "io_norm_quant": [
+      {
+        "kernel": "kohaku_fa",
+        "key": "torch.bfloat16-B98-H20-KV20-D128-Q64-K64-G1",
+        "config": {
+          "BM": 64,
+          "BN": 32,
+          "stages": 1,
+          "warps": 4
+        },
+        "source": "table",
+        "timings_ms": {},
+        "failures": {}
+      },
+      {
+        "kernel": "kohaku_fa",
+        "key": "torch.bfloat16-B1-H20-KV20-D128-Q128-K128-G1",
+        "config": {
+          "BM": 64,
+          "BN": 32,
+          "stages": 1,
+          "warps": 4
+        },
+        "source": "table",
+        "timings_ms": {},
+        "failures": {}
+      },
+      {
+        "kernel": "kohaku_fa",
+        "key": "torch.bfloat16-B1-H48-KV12-D128-Q4096-K4096-G2",
+        "config": {
+          "BM": 128,
+          "BN": 64,
+          "stages": 2,
+          "warps": 8
+        },
+        "source": "table",
+        "timings_ms": {},
+        "failures": {}
+      },
+      {
+        "kernel": "norm_quant",
+        "key": "[4096,1,6144,256,\"torch.bfloat16\",-1]",
+        "config": {
+          "path": "fused"
+        },
+        "source": "measured",
+        "timings_ms": {
+          "path=split": 3.7150719165802,
+          "path=fused": 2.2896640300750732
+        },
+        "failures": {}
+      },
+      {
+        "kernel": "joint_qkv",
+        "key": "[4096,1,6144,[6144,1536,1536,6144],[256,256,256,256],\"torch.bfloat16\"]",
+        "config": {
+          "path": "split"
+        },
+        "source": "table",
+        "timings_ms": {},
+        "failures": {}
+      },
+      {
+        "kernel": "joint_swiglu",
+        "key": "[4096,1,6144,[16384,16384],[256,256],\"torch.bfloat16\"]",
+        "config": {
+          "path": "split"
+        },
+        "source": "table",
+        "timings_ms": {},
+        "failures": {}
+      },
+      {
+        "kernel": "residual_norm",
+        "key": "[4096,1,16384,[6144],[256],\"torch.bfloat16\"]",
+        "config": {
+          "path": "split"
+        },
+        "source": "table",
+        "timings_ms": {},
+        "failures": {}
+      }
+    ]
+  },
+  "options": {
+    "baseline": {
+      "allow_norm_chain": true,
+      "allow_last_norm": true,
+      "allow_input_quant": false
+    },
+    "io_overlap": {
+      "allow_norm_chain": true,
+      "allow_last_norm": true,
+      "allow_input_quant": false
+    },
+    "io_norm_quant": {
+      "allow_norm_chain": true,
+      "allow_last_norm": true,
+      "allow_input_quant": true
+    }
+  },
+  "graphs": {
+    "baseline": 1,
+    "io_overlap": 1,
+    "io_norm_quant": 1
+  },
+  "native_stats": {
+    "baseline": {
+      "prefetch_hits": 1472,
+      "routed_swiglu_split": 224,
+      "cast_buffer_fallbacks": 1221,
+      "h2d_bytes": 23697441792,
+      "memory_waits": 1666,
+      "prefetch_submissions": 1472,
+      "qk_gemm_norm_rope": 448,
+      "routed_residual_norm_split": 448,
+      "routed_qkv_split": 224,
+      "weight_copies": 145,
+      "parallel_groups": 256,
+      "side_stream_gemms": 496,
+      "gated_gemm": 448
+    },
+    "io_overlap": {
+      "device_buffer_allocations": 487,
+      "device_buffer_reuses": 768,
+      "host_buffer_allocations": 9,
+      "host_buffer_reuses": 2584,
+      "host_copy_bytes": 24453948416,
+      "prefetch_hits": 1472,
+      "routed_swiglu_split": 224,
+      "cast_buffer_fallbacks": 1285,
+      "h2d_bytes": 24906933248,
+      "memory_waits": 1450,
+      "parallel_groups": 256,
+      "weight_copies": 140,
+      "prefetch_submissions": 1472,
+      "qk_gemm_norm_rope": 448,
+      "routed_residual_norm_split": 448,
+      "routed_qkv_split": 224,
+      "side_stream_gemms": 496,
+      "device_pool_bypasses": 246,
+      "gated_gemm": 448
+    },
+    "io_norm_quant": {
+      "device_buffer_allocations": 506,
+      "device_buffer_reuses": 863,
+      "host_buffer_reuses": 2687,
+      "host_copy_bytes": 25342198784,
+      "cast_buffer_fallbacks": 1384,
+      "h2d_bytes": 25795183616,
+      "memory_waits": 1641,
+      "norm_quant_fused": 448,
+      "prefetch_submissions": 1472,
+      "prefetch_hits": 1472,
+      "prepared_qkv": 224,
+      "qk_gemm_norm_rope": 448,
+      "weight_copies": 88,
+      "parallel_groups": 256,
+      "side_stream_gemms": 496,
+      "device_pool_bypasses": 231,
+      "gated_gemm": 448,
+      "prepared_swiglu": 224,
+      "routed_residual_norm_split": 8
+    }
+  },
+  "five_call_stats": {
+    "baseline": {
+      "prefetch_hits": 920,
+      "routed_swiglu_split": 140,
+      "cast_buffer_fallbacks": 865,
+      "h2d_bytes": 13158257280,
+      "memory_waits": 1153,
+      "prefetch_submissions": 920,
+      "qk_gemm_norm_rope": 280,
+      "routed_residual_norm_split": 280,
+      "routed_qkv_split": 140,
+      "weight_copies": 0,
+      "parallel_groups": 160,
+      "side_stream_gemms": 310,
+      "gated_gemm": 280
+    },
+    "io_overlap": {
+      "device_buffer_allocations": 315,
+      "device_buffer_reuses": 540,
+      "host_buffer_allocations": 0,
+      "host_buffer_reuses": 1570,
+      "host_copy_bytes": 13158257280,
+      "prefetch_hits": 920,
+      "routed_swiglu_split": 140,
+      "cast_buffer_fallbacks": 865,
+      "h2d_bytes": 13158257280,
+      "memory_waits": 1107,
+      "parallel_groups": 160,
+      "weight_copies": 0,
+      "prefetch_submissions": 920,
+      "qk_gemm_norm_rope": 280,
+      "routed_residual_norm_split": 280,
+      "routed_qkv_split": 140,
+      "side_stream_gemms": 310,
+      "device_pool_bypasses": 145,
+      "gated_gemm": 280
+    },
+    "io_norm_quant": {
+      "device_buffer_allocations": 315,
+      "device_buffer_reuses": 540,
+      "host_buffer_reuses": 1570,
+      "host_copy_bytes": 13158257280,
+      "cast_buffer_fallbacks": 865,
+      "h2d_bytes": 13158257280,
+      "memory_waits": 1108,
+      "norm_quant_fused": 280,
+      "prefetch_submissions": 920,
+      "prefetch_hits": 920,
+      "prepared_qkv": 140,
+      "qk_gemm_norm_rope": 280,
+      "weight_copies": 0,
+      "parallel_groups": 160,
+      "side_stream_gemms": 310,
+      "device_pool_bypasses": 145,
+      "gated_gemm": 280,
+      "prepared_swiglu": 140,
+      "routed_residual_norm_split": 5
+    }
+  },
+  "hot_project_python_calls": [
+    {
+      "file": "full_precompile.py",
+      "function": "__call__",
+      "calls": 1
+    }
+  ]
+}

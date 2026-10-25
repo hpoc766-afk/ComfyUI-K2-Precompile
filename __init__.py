@@ -25,11 +25,11 @@ class K2PrecompileLoader:
                 "vae_name": (vae_files, {"default": vae_default} if vae_default in vae_files else {}),
                 "precompile": ("BOOLEAN", {
                     "default": False,
-                    "tooltip": "逐元素模式：首次采样编译调制/残差；仅在全部预编译关闭时生效。",
+                    "tooltip": "编译整个K2 DiT前向：单入口、fullgraph=True，支持原生量化和动态权重读取；失败直接报错。",
                 }),
                 "prefill_tokens": ("INT", {
                     "default": 5120, "min": 0, "max": 65536, "step": 1,
-                    "tooltip": "仅逐元素模式使用的文本+图像token容量；0不补齐。全部预编译忽略此项。",
+                    "tooltip": "旧工作流兼容参数，整图编译使用实际token长度，不再预填充。",
                 }),
             },
             "optional": {
@@ -39,7 +39,11 @@ class K2PrecompileLoader:
                 }),
                 "full_precompile": ("BOOLEAN", {
                     "default": False,
-                    "tooltip": "严格编译TE Transformer、DiT前向和VAE编解码；需要兼容的静态权重驻留，动态VBAR不支持。优先于逐元素模式，不支持时报错。",
+                    "tooltip": "分别编译DiT、TE Transformer和VAE完整前向；DiT接入原生量化与动态权重读取。TE/VAE需要自身后端支持整图。",
+                }),
+                "fuse_epilogue": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": "融合归一化调制、激活乘法与Q/K后处理；SM89 ConvRot INT4另支持共享输入量化、Q/K投影+归一化+RoPE和输出投影门控残差。",
                 }),
             },
         }
@@ -48,19 +52,20 @@ class K2PrecompileLoader:
     RETURN_NAMES = ("模型", "文本编码器", "变分自编码器")
     FUNCTION = "load"
     CATEGORY = "K2/模型加载"
-    DESCRIPTION = "加载K2模型，可选择逐元素预编译、TE/DiT/VAE完整图编译与LoRA热插拔。"
+    DESCRIPTION = "加载K2模型，支持单入口完整DiT前向编译、可选TE/VAE整图与LoRA热插拔。"
     EXPERIMENTAL = True
 
-    def load(self, dit_name, text_encoder_name, vae_name, precompile, prefill_tokens, hot_lora=False, full_precompile=False):
+    def load(self, dit_name, text_encoder_name, vae_name, precompile, prefill_tokens, hot_lora=False, full_precompile=False, fuse_epilogue=False):
         model, = nodes.UNETLoader().load_unet(dit_name, "default")
         if not isinstance(model.get_model_object("diffusion_model"), SingleStreamDiT):
             raise ValueError("DiT 文件不是 Krea2 模型，请选择 K2 主干权重。")
         clip, = nodes.CLIPLoader().load_clip(text_encoder_name, type="krea2")
         vae, = nodes.VAELoader().load_vae(vae_name)
         if full_precompile:
-            model, clip, vae = patch_full_models(model, clip, vae)
+            model, clip, vae = patch_full_models(model, clip, vae, fuse_epilogue=fuse_epilogue)
         elif precompile:
-            model = patch_krea2(model, prefill_tokens, compile_blocks=True)
+            model = patch_krea2(model, prefill_tokens, compile_blocks=True,
+                                fuse_epilogue=fuse_epilogue)
         if hot_lora:
             model = enable_hot_lora(model)
         return model, clip, vae

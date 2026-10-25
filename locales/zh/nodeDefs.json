@@ -1,7 +1,7 @@
 {
   "K2PrecompileLoader": {
     "display_name": "K2 模型加载器",
-    "description": "加载K2模型，可选择逐元素预编译、TE/DiT/VAE完整图编译与LoRA热插拔。",
+    "description": "加载K2模型，支持单入口完整DiT前向编译、可选TE/VAE整图与LoRA热插拔。",
     "inputs": {
       "dit_name": {
         "name": "主干模型",
@@ -17,19 +17,23 @@
       },
       "precompile": {
         "name": "启用预编译",
-        "tooltip": "仅全部预编译关闭时生效，编译主干的逐元素调制与残差算子。"
+        "tooltip": "整个K2 DiT前向以单入口、fullgraph=True编译，支持原生量化与动态权重读取。"
       },
       "prefill_tokens": {
         "name": "预填充令牌数",
-        "tooltip": "仅逐元素模式使用的文本+图像token容量；0不补齐。全部预编译忽略此项。"
+        "tooltip": "旧工作流兼容参数；整图编译使用实际token长度，不再预填充。"
       },
       "hot_lora": {
         "name": "启用 LoRA 热插拔",
         "tooltip": "验证 K2 权重名称及适配器维度后，让后续 LoRA 加载节点使用可逆低秩旁路，切换适配器时保持底座权重共享。"
       },
+      "fuse_epilogue": {
+        "name": "融合前向算子",
+        "tooltip": "融合归一化、调制、激活和Q/K后处理；兼容的INT4投影还会共享输入量化，并融合Q/K归一化与RoPE、输出门控残差。"
+      },
       "full_precompile": {
         "name": "全部预编译（模型计算）",
-        "tooltip": "分别严格编译TE Transformer、DiT前向和VAE编解码。需要兼容的静态权重驻留，动态VBAR不支持。优先于逐元素模式，不含调度、分词、VSR或文件读写；不支持时直接报错。"
+        "tooltip": "在完整DiT编译之外，另编译TE Transformer和VAE编解码。TE/VAE需要自身后端支持完整追踪。"
       }
     },
     "outputs": {

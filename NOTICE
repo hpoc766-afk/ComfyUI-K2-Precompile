@@ -9,6 +9,34 @@ The compiled block wrapper follows the upstream Krea2 block's mathematical
 sequence; the native model and adapter calculations remain upstream code.
 ComfyUI and its contributors retain their respective copyrights.
 
-The included source is distributed under GNU GPL version 3; see LICENSE.
+The Q/K GEMM visitor in kernels/qk_norm_rope.cu adapts the NVIDIA CUTLASS
+VisitorAuxStore callback structure (BSD-3-Clause). Copyright (c) 2017 - 2026
+NVIDIA CORPORATION & AFFILIATES. The original license is reproduced in
+third_party/CUTLASS-LICENSE.txt. CUTLASS headers and binaries remain external
+dependencies. The RMS reduction ordering follows PyTorch ATen 2.9's CUDA
+RMSNorm implementation (https://github.com/pytorch/pytorch).
+
+The normalized-input INT4 quantizer in kernels/norm_quant.cu reuses and adapts
+ComfyKitchen's ConvRot transform and packing sequence (Apache-2.0), revision
+255a43879fe57bbcbecfdb273b46d772b00c5a90. Copyright (c) 2025 Comfy Org.
+Its build script extracts the original device helper prefix without modification
+and adds explicitly rounded RMSNorm/modulation ahead of that sequence. The
+license and upstream notice are in third_party/comfy-kitchen/.
+
+KohakuKernelRouter adapts the shape bucketing, CUDA-event timing, per-kernel
+winner tables and fused/split binding flow from KohakuMossTrainer, revision
+0536e62b6062039104d8f9575635b5d07bf573d3:
+https://github.com/KohakuBlueleaf/KohakuMossTrainer
+Original files: src/kohakumoss_kernels/tuning/{timing,tuner,buckets}.py and
+src/kohakumoss_kernels/backends/triton/attention/{_kernels,varlen}.py.
+The FA forward is adapted for direct GQA head indexing, strided batched inputs,
+optional masks and gated inference output; no K/V head replication is performed.
+Copyright 2026 Shih-Ying Yeh (KohakuBlueLeaf) and contributors.
+Modified files carry adaptation notices. These portions retain the KohakuMoss
+License 1.0, reproduced in third_party/KohakuMoss/LICENSE, including its naming
+requirement. The product's primary title identifies the Kohaku backend.
+
+Except for the separately identified third-party portions above, the included
+source is distributed under GNU GPL version 3; see LICENSE.
 Model weights, ComfyUI itself, Python environments and compiled caches are
 not included. Model and third-party dependency licenses remain applicable.
