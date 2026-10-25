@@ -33,6 +33,7 @@ git -C custom_nodes/ComfyUI-K2-Precompile pull --ff-only
 | 主干模型 | 选择 Krea2 DiT 权重 |
 | 文本编码器 | 选择 Krea2 使用的文本编码器权重 |
 | 变分自编码器 | 选择图像与潜空间转换的 VAE 权重 |
+| DiT 激活精度 | `auto` / `fp16` / `bf16`；独立选择激活精度，保留各层权重的存储格式及量化计算 |
 | 启用预编译 | 默认关闭；整个 K2 DiT 前向以单入口、`fullgraph=True` 编译 |
 | 预填充令牌数 | 旧工作流兼容参数，当前使用实际 token 长度，不执行预填充 |
 | 启用 LoRA 热插拔 | 默认关闭；后续普通 LoRA 节点使用兼容的低秩旁路 |
@@ -40,6 +41,8 @@ git -C custom_nodes/ComfyUI-K2-Precompile pull --ff-only
 | 全部预编译（模型计算） | 默认关闭；在完整 DiT 编译之外，另编译 TE Transformer 和 VAE 编解码入口 |
 
 开启 `启用预编译` 即使用完整 DiT 编译。`全部预编译` 还会编译 TE/VAE，要求它们的后端支持完整追踪。两个开关都关闭时沿用原生计算。
+
+**FP16 激活**可配合已有的 BF16/FP16/FP32 普通权重、ConvRot INT4、TensorWise/ConvRot INT8，以及 FP8 E4M3/E5M2 权重使用。它不启用强制权重反量化，也不改变 TE/VAE 精度；默认 `auto` 保留旧工作流行为。格式范围和计算方式见 [激活精度说明](docs/activation-precision.md)。
 
 ## 独立 Token 计数器
 
@@ -64,7 +67,7 @@ git -C custom_nodes/ComfyUI-K2-Precompile pull --ff-only
 
 **全部预编译模式**额外为 TE Transformer、VAE `encode/decode` 各建立完整编译入口。TE/VAE 的动态权重及量化能力仍由各自后端决定。此模式不启用 CUDA Graph。模型级入口通过 ModelPatcher 挂载与恢复，DiT 内部的图适配方法只在调用期间安装，并在返回或异常时恢复。
 
-当前版本的实测环境为 Windows 11、RTX 4060 Laptop 8 GB、Python 3.12.10、PyTorch 2.9.1+cu130，真实 Krea2-Turbo ConvRot INT4 权重，BF16 激活，动态 VBAR 预留 1536 MiB。832×1216 对应 3952 图像 token，加构造的 98 文本 token，共 **4050 token，额外填充 0**。`4096` 仅是调优长度分桶。
+BF16 参考测速（提交 `1993915`）环境为 Windows 11、RTX 4060 Laptop 8 GB、Python 3.12.10、PyTorch 2.9.1+cu130，真实 Krea2-Turbo ConvRot INT4 权重，BF16 激活，动态 VBAR 预留 1536 MiB。832×1216 对应 3952 图像 token，加构造的 98 文本 token，共 **4050 token，额外填充 0**。`4096` 仅是调优长度分桶。
 
 同一模型实例、五轮交错热态 DiT 前向：
 
@@ -75,6 +78,8 @@ git -C custom_nodes/ComfyUI-K2-Precompile pull --ff-only
 | 再加归一化调制/旋转量化融合 | **1.175 秒** |
 
 合计减少约 13.5%。三种配置各捕获一张完整图；最终路径每次前向实际执行 56 次归一化量化融合。每次 H2D 仍约 2.451 GiB。此处测的是构造输入下的模型前向，不含采样器、独立文本编码和 VAE，不能作为完整出图耗时。原始计时与运行计数见 [测速数据](docs/benchmarks/io-input-quant-4050.json)。
+
+FP16 激活也已在真实 INT4、4050 token、28 层下完成前向测速：五次热态中位数 **1.151 秒**，输入输出均为 FP16，量化计算保持开启，一张 806 节点完整图。该记录与上表为独立运行，见 [FP16 使用与测速](docs/activation-precision.md)。其他权重格式沿用对应已接入路径，本次未逐格式追加实测。
 
 **当前 Kohaku FA 和归一化量化变更仅完成上述速度测量，尚未追加数值或出图对照。** 旧版前向的逐值一致、769 次 kernel 启动和旧采样计时属于历史实现，不代表当前版本。
 
@@ -90,6 +95,7 @@ git -C custom_nodes/ComfyUI-K2-Precompile pull --ff-only
 
 ## 源码与检查
 
+- [`precision.py`](precision.py)：模型级 FP16/BF16 激活选择，与权重存储格式分开。
 - [`__init__.py`](__init__.py)：节点输入、模型加载与模式选择。
 - [`runtime.py`](runtime.py)：旧加载器参数到完整 DiT 编译入口的兼容接口。
 - [`graph_ops.py`](graph_ops.py)：图内原生算子、当前权重依赖与可逆方法适配。

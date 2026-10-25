@@ -1,0 +1,167 @@
+{
+  "environment": {
+    "os": "Windows 11",
+    "python": "3.12.10",
+    "pytorch": "2.9.1+cu130",
+    "gpu": "NVIDIA GeForce RTX 4060 Laptop GPU",
+    "weight_format": "ConvRot INT4",
+    "activation_dtype": "torch.float16"
+  },
+  "input": {
+    "batch": 1,
+    "latent_spatial_shape": [
+      104,
+      152
+    ],
+    "image_tokens": 3952,
+    "text_tokens": 98,
+    "total_tokens": 4050,
+    "extra_padding": 0,
+    "kind": "synthetic latent and text features with real weights"
+  },
+  "resolution": [
+    832,
+    1216
+  ],
+  "blocks": 28,
+  "vbar_headroom_mib": 1536,
+  "force_cast_weights": false,
+  "first_call": {
+    "wall_ms": 62516.144900000654,
+    "gpu_span_ms": 62516.3984375,
+    "output_dtype": "torch.float16"
+  },
+  "measurements": [
+    {
+      "wall_ms": 1151.1967000551522,
+      "gpu_span_ms": 1151.1961669921875,
+      "output_dtype": "torch.float16"
+    },
+    {
+      "wall_ms": 1147.246600012295,
+      "gpu_span_ms": 1147.241455078125,
+      "output_dtype": "torch.float16"
+    },
+    {
+      "wall_ms": 1154.9436999484897,
+      "gpu_span_ms": 1154.94189453125,
+      "output_dtype": "torch.float16"
+    },
+    {
+      "wall_ms": 1148.6605999525636,
+      "gpu_span_ms": 1148.6575927734375,
+      "output_dtype": "torch.float16"
+    },
+    {
+      "wall_ms": 1150.6373999873176,
+      "gpu_span_ms": 1150.6329345703125,
+      "output_dtype": "torch.float16"
+    }
+  ],
+  "median_wall_ms": 1150.6373999873176,
+  "graphs": 1,
+  "graph_nodes": 806,
+  "tuning_decisions": [
+    {
+      "kernel": "kohaku_fa",
+      "key": "torch.float16-B98-H20-KV20-D128-Q64-K64-G1",
+      "config": {
+        "BM": 64,
+        "BN": 32,
+        "stages": 1,
+        "warps": 4
+      },
+      "source": "table",
+      "timings_ms": {},
+      "failures": {}
+    },
+    {
+      "kernel": "kohaku_fa",
+      "key": "torch.float16-B1-H20-KV20-D128-Q128-K128-G1",
+      "config": {
+        "BM": 64,
+        "BN": 32,
+        "stages": 1,
+        "warps": 4
+      },
+      "source": "table",
+      "timings_ms": {},
+      "failures": {}
+    },
+    {
+      "kernel": "kohaku_fa",
+      "key": "torch.float16-B1-H48-KV12-D128-Q4096-K4096-G2",
+      "config": {
+        "BM": 128,
+        "BN": 64,
+        "stages": 2,
+        "warps": 8
+      },
+      "source": "table",
+      "timings_ms": {},
+      "failures": {}
+    },
+    {
+      "kernel": "norm_quant",
+      "key": "[4096,1,6144,256,\"torch.float16\",-1]",
+      "config": {
+        "path": "fused"
+      },
+      "source": "table",
+      "timings_ms": {},
+      "failures": {}
+    },
+    {
+      "kernel": "joint_qkv",
+      "key": "[4096,1,6144,[6144,1536,1536,6144],[256,256,256,256],\"torch.float16\"]",
+      "config": {
+        "path": "split"
+      },
+      "source": "table",
+      "timings_ms": {},
+      "failures": {}
+    },
+    {
+      "kernel": "joint_swiglu",
+      "key": "[4096,1,6144,[16384,16384],[256,256],\"torch.float16\"]",
+      "config": {
+        "path": "split"
+      },
+      "source": "table",
+      "timings_ms": {},
+      "failures": {}
+    },
+    {
+      "kernel": "residual_norm",
+      "key": "[4096,1,16384,[6144],[256],\"torch.float16\"]",
+      "config": {
+        "path": "split"
+      },
+      "source": "table",
+      "timings_ms": {},
+      "failures": {}
+    }
+  ],
+  "native_stats": {
+    "device_buffer_allocations": 482,
+    "device_buffer_reuses": 743,
+    "host_buffer_allocations": 7,
+    "host_buffer_reuses": 2530,
+    "host_copy_bytes": 23132226560,
+    "cast_buffer_fallbacks": 1248,
+    "h2d_bytes": 23585211392,
+    "memory_waits": 1473,
+    "norm_quant_fused": 448,
+    "prefetch_hits": 1472,
+    "prepared_qkv": 224,
+    "weight_copies": 149,
+    "parallel_groups": 256,
+    "prefetch_submissions": 1472,
+    "qk_gemm_norm_rope": 448,
+    "side_stream_gemms": 496,
+    "device_pool_bypasses": 245,
+    "gated_gemm": 448,
+    "prepared_swiglu": 224,
+    "routed_residual_norm_split": 8
+  }
+}

@@ -51,6 +51,22 @@ def runtime_module():
     return module
 
 
+def bind_native_lowerings(gm):
+    """Keep native calls explicit, avoiding implicit IR string expansion."""
+    from torch._library.utils import get_layout_constraint_tag
+    from torch._inductor.lowering import lowerings, make_fallback, tag_to_layout_constraint
+    for node in gm.graph.nodes:
+        if node.op != 'call_function' or not str(node.target).startswith('k2_native.'):
+            continue
+        target = node.target
+        targets = ([getattr(target, name) for name in target.overloads()]
+                   if isinstance(target, torch._ops.OpOverloadPacket) else [target])
+        for op in targets:
+            if op not in lowerings:
+                tag = get_layout_constraint_tag(op)
+                make_fallback(op, layout_constraint=tag_to_layout_constraint(tag), warn=False)
+
+
 @functools.lru_cache(maxsize=1)
 def register_fakes():
     from . import graph_ops as g
@@ -218,7 +234,8 @@ class NativePlan:
                 vb, address, size = allocation
                 self.keepalive.append(vb)
                 buffer = comfy_aimdo.torch.aimdo_to_tensor(allocation, self.device)
-                w, b = memory_management.interpret_gathered_like([weight, bias], buffer)
+                geometry = memory_management.tensors_to_geometries([weight, bias])
+                w, b = memory_management.interpret_gathered_like(geometry, buffer)
                 gpu = list(w.layout_cls.get_plain_tensors(w)) if isinstance(w, QuantizedTensor) else [w]
                 if b is not None:
                     gpu.append(b)

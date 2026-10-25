@@ -172,7 +172,11 @@ struct Runtime {
  void release(std::unique_ptr<Lease> item,cudaStream_t stream){item->done=event(item->record->optimize_io);check(cudaEventRecord(item->done,stream));pending.push_back(std::move(item));}
  void defer(std::unique_ptr<Lease> item){item->abandoned_prefetch=true;pending_prefetch_bytes+=item->bytes;release(std::move(item),transfer.stream());}
  bool copy(Lease& lease,int slot,Tensor source,Tensor const& destination,bool speculative){
-  auto b=lease.record;source=source.contiguous();HostBuffer* cached=nullptr;
+  auto b=lease.record;
+  // VBAR geometry can use a different floating dtype than the CPU checkpoint.
+  // Convert the payload before copying into its typed destination view.
+  if(source.scalar_type()!=destination.scalar_type())source=source.to(destination.scalar_type());
+  source=source.contiguous();HostBuffer* cached=nullptr;
   if(!source.is_cuda()&&!source.is_pinned()){
    if(b->optimize_io)cached=host(b,slot,source,!speculative);
    if(!cached){
@@ -267,7 +271,14 @@ Quantized quantize(Tensor const& x,std::shared_ptr<Binding> const& b){
  else if(b->format==2){q={at::empty({m,k},x.options().dtype(at::kChar)),at::empty({m,1},x.options().dtype(at::kFloat))};api().quant8(flat.data_ptr(),q.data.data_ptr(),q.scale.data_ptr(),m,k,b->group,dtype_code(x),stream(x));}
  else if(b->format==3||b->format==4){
   auto dtype=b->format==3?at::kFloat8_e4m3fn:at::kFloat8_e5m2;int code=b->format==3?5:6;
-  Tensor scale=b->input_scale.defined()?b->input_scale:at::amax(at::abs(flat)).div(b->format==3?448.:57344.).to(at::kFloat);
+  Tensor scale=b->input_scale;
+  if(!scale.defined()){
+   // FP16 division can underflow before a later FP32 cast, especially E5M2.
+   // Keep the existing BF16 route; form FP16's dynamic scale in FP32.
+   auto magnitude=at::amax(at::abs(flat));
+   if(x.scalar_type()==at::kHalf)magnitude=magnitude.to(at::kFloat);
+   scale=magnitude.div(b->format==3?448.:57344.).to(at::kFloat).clamp_min((std::numeric_limits<float>::min)());
+  }
   q={at::empty({m,k},x.options().dtype(dtype)),scale};api().fp8(flat.data_ptr(),q.data.data_ptr(),scale.data_ptr(),flat.numel(),dtype_code(x),code,true,stream(x));
  }
  check(cudaGetLastError());return q;

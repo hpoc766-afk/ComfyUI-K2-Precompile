@@ -40,6 +40,8 @@ class FullGraphCall:
         if self.native_plan is not None:
             from .backend_routing import tune_graph
             tune_graph(self.native_plan, gm, inputs)
+            from .native_schedule import bind_native_lowerings
+            bind_native_lowerings(gm)
         else:
             from .fa_routing import lower_attention
             lower_attention(gm)

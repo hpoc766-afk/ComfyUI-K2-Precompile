@@ -31,6 +31,10 @@
         "name": "融合前向算子",
         "tooltip": "融合归一化、调制、激活和Q/K后处理；兼容的INT4投影还会共享输入量化，并融合Q/K归一化与RoPE、输出门控残差。"
       },
+      "activation_dtype": {
+        "name": "DiT 激活精度",
+        "tooltip": "auto沿用ComfyUI；fp16使用FP16激活，bf16使用BF16激活。权重存储格式保持不变，继续使用INT4、INT8、FP8等对应计算路径；不改变文本编码器和VAE精度。"
+      },
       "full_precompile": {
         "name": "全部预编译（模型计算）",
         "tooltip": "在完整DiT编译之外，另编译TE Transformer和VAE编解码。TE/VAE需要自身后端支持完整追踪。"

@@ -7,6 +7,7 @@ from .hot_lora import enable_hot_lora
 from .runtime import patch_krea2
 from .full_precompile import patch_full_models
 from .token_counter import K2TokenCounter
+from .precision import ACTIVATION_DTYPES, patch_activation_dtype
 
 
 class K2PrecompileLoader:
@@ -45,6 +46,10 @@ class K2PrecompileLoader:
                     "default": False,
                     "tooltip": "融合归一化调制、激活乘法与Q/K后处理；SM89 ConvRot INT4另支持共享输入量化、Q/K投影+归一化+RoPE和输出投影门控残差。",
                 }),
+                "activation_dtype": (list(ACTIVATION_DTYPES), {
+                    "default": "auto",
+                    "tooltip": "DiT激活精度：auto沿用ComfyUI；fp16/bf16独立选择激活精度，保留INT4、INT8、FP8等权重存储和量化计算。",
+                }),
             },
         }
 
@@ -55,10 +60,11 @@ class K2PrecompileLoader:
     DESCRIPTION = "加载K2模型，支持单入口完整DiT前向编译、可选TE/VAE整图与LoRA热插拔。"
     EXPERIMENTAL = True
 
-    def load(self, dit_name, text_encoder_name, vae_name, precompile, prefill_tokens, hot_lora=False, full_precompile=False, fuse_epilogue=False):
+    def load(self, dit_name, text_encoder_name, vae_name, precompile, prefill_tokens, hot_lora=False, full_precompile=False, fuse_epilogue=False, activation_dtype="auto"):
         model, = nodes.UNETLoader().load_unet(dit_name, "default")
         if not isinstance(model.get_model_object("diffusion_model"), SingleStreamDiT):
             raise ValueError("DiT 文件不是 Krea2 模型，请选择 K2 主干权重。")
+        model = patch_activation_dtype(model, activation_dtype)
         clip, = nodes.CLIPLoader().load_clip(text_encoder_name, type="krea2")
         vae, = nodes.VAELoader().load_vae(vae_name)
         if full_precompile:
